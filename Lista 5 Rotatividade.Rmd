@@ -1,0 +1,134 @@
+---
+title: "Afastamento e impeachment de Dilma Rousseff e a rotatividade dos cargos comissionados"
+author: "Daniel Marques"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(lubridate)
+library(readr)
+library(scales)
+library(infer)
+```
+
+# O que será analisado?
+
+Será utilizada base de dados de elaboração própria que contém a **rotatividade mensal dos cargos de livre provimento do Executivo**.
+
+A formulação teórica sugere que as mudanças intitucionais no Brasil e os momentos de instabilidade devem ter aumentado o custo da coalização governamental. Portanto...
+
+**A hipótese a ser testada:** o afastamento de Dilma Rousseff (agosto de 2016) aumentou a rotatividade dos cargos comissionados?
+
+# Preparação
+
+## Carregando pacotes
+
+```{r}
+pacman::p_load("tidyverse", "lubridate", "readr", "scales", "infer")
+```
+
+## Lendo e processando o arquivo CSV
+
+Aqui, aproveito para configurar o formato da coluna que representa a data e identifica qual o mês a que se refere o dado.
+
+```{r}
+setwd("~/Lista4/tarefa5/tarefa5")
+calculo_rotatividade_b <- read_csv("calculo_rotatividade_b.csv") %>%
+  mutate(mes = ymd(mes))
+```
+
+# Antes e depois do afastamento
+
+É preciso definir uma variável categórica para separar os dados referentes aos períodos posterior e anterior ao afastamento de Dilma. A variável "pos_imp" terá o valor "1" para o período após o afastamento e "0" para antes do afastamento.
+
+```{r}
+calculo_rotatividade_b <- calculo_rotatividade_b %>%
+  mutate(ano = year(mes),
+         pos_imp = if_else(mes > ymd("2016-08-31"), 1, 0))
+```
+
+# Realizando o teste T
+
+```{r echo=TRUE}
+t.test(percent_rotat ~ pos_imp, data = calculo_rotatividade_b)
+```
+
+**Achados:**
+
+Média de rotatividade no período pré-impeachment: \~ 3,12% Média pós-impeachment: \~ 4,17%
+
+O valor t inferior a 0 (-4.1022) indica que a *média mensal de rotatividade dos servidores comissionados é menor antes do afastamento de Dilma*.
+
+O p-valor de número muito pequeno (7.106e−05 = 0.00007106) indica que *a diferença entre os dois momentos observados é estatisticamente significativa.*
+
+# Construindo gráficos
+
+## Armazenando dados estatísticos
+
+Aqui, solicito ao R o cálculo dos dados: média de cada período (mean), e o intervalo de confiança (ci).
+
+```{r}
+summary_stats <- calculo_rotatividade_b %>%
+  group_by(pos_imp) %>%
+  summarize(
+    mean_percent_rotat = mean(percent_rotat, na.rm = TRUE),
+    ci_lower = mean_percent_rotat - qt(0.975, df=n()-1) * sd(percent_rotat, na.rm = TRUE)/sqrt(n()),
+    ci_upper = mean_percent_rotat + qt(0.975, df=n()-1) * sd(percent_rotat, na.rm = TRUE)/sqrt(n())
+  )
+```
+
+# Gráfico de densidade
+
+```{r}
+# Calculando as médias para cada grupo
+ggplot(calculo_rotatividade_b, aes(x = percent_rotat, fill = factor(pos_imp, labels = c("Pré-Afastamento", "Pós-Afastamento")))) +
+  geom_density(alpha = 0.6, color = NA) +
+  geom_vline(data = summary_stats, aes(xintercept = mean_percent_rotat, color = factor(pos_imp, labels = c("Pré-Afastamento", "Pós-Afastamento"))), linetype = "dashed", size = 1) +
+  scale_fill_manual(values = c("#1F77B4", "#FF7F0E")) +
+  scale_color_manual(values = c("#1F77B4", "#FF7F0E")) + 
+  labs(
+    title = "Distribuição de densidade da rotatividade antes e depois do afastamento de Dilma",
+    x = "Percentual de Rotatividade",
+    y = "Densidade",
+    fill = "Período",
+    color = "Período"
+  ) +
+  theme_minimal()
+```
+
+
+
+# Médias e intervalo de confiança
+
+```{r}
+ggplot(summary_stats, aes(y = factor(pos_imp, labels = c("Pré-Afastamento", "Pós-Afastamento")), x = mean_percent_rotat, color = factor(pos_imp))) +
+  geom_point(size = 3) +
+  geom_errorbarh(aes(xmin = ci_lower, xmax = ci_upper), height = 0.2) +
+  scale_color_manual(values = c("#1F77B4", "#FF7F0E")) + 
+  labs(
+    title = "Comparação de médias de rotatividade antes e\ndepois do afastamento de Dilma",
+    x = "Média de Percentual de Rotatividade Mensal",
+    y = "Período",
+    color = "Grupo"
+  ) +
+  theme_minimal()
+```
+
+## Gráfico linear
+
+```{r}
+ggplot(calculo_rotatividade_b, aes(y = percent_rotat, x = factor(pos_imp, labels = c("Pré-Afastamento", "Pós-Afastamento")), color = factor(pos_imp))) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", se = FALSE, linetype = "dashed", color = "black") +
+  scale_color_manual(values = c("#1F77B4", "#FF7F0E")) + # cores mais escuras
+  labs(
+    title = "Rotatividade mensal antes e depois do afastamento de Dilma",
+    y = "Percentual de Rotatividade",
+    x = "Período",
+    color = "Grupo"
+  ) +
+  theme_minimal()
+```
